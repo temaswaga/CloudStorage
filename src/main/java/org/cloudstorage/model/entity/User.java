@@ -1,4 +1,4 @@
-package org.cloudstorage.model;
+package org.cloudstorage.model.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
