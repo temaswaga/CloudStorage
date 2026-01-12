@@ -4,8 +4,11 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -13,26 +16,29 @@ import org.hibernate.annotations.OnDeleteAction;
 @Table(name = "file_nodes")
 public class FileNode {
     @Id
-    @Column(name = "id", columnDefinition = "uuid not null")
-    private Object id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @JdbcTypeCode(java.sql.Types.BINARY)
+    private UUID id;
 
     @Column(name = "name", nullable = false)
     private String name;
 
-    @ColumnDefault("0")
     @Column(name = "is_directory", nullable = false)
     private Boolean isDirectory = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @OnDelete(action = OnDeleteAction.CASCADE)
     @JoinColumn(name = "parent_id")
+    @JdbcTypeCode(java.sql.Types.BINARY)
     private FileNode parent;
 
-    @ColumnDefault("0")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false)
+    @JdbcTypeCode(java.sql.Types.BINARY)
+    private User owner;
+
     @Column(name = "size_bytes")
-    private Long sizeBytes;
+    private Long sizeBytes = 0L;
 
     @Column(name = "s3_key", length = 512)
     private String s3Key;
-
 }
