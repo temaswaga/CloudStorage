@@ -1,4 +1,4 @@
-package org.cloudstorage.model.dto;
+package org.cloudstorage.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;

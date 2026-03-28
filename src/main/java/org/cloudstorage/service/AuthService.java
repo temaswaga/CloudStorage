@@ -4,7 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.AllArgsConstructor;
-import org.cloudstorage.model.dto.AuthRequestDto;
+import org.cloudstorage.dto.AuthRequestDto;
 import org.cloudstorage.model.entity.User;
 import org.cloudstorage.repository.UserRepository;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,7 +27,6 @@ public class AuthService {
 
     public void register(AuthRequestDto dto) {
         User user = new User(dto.username(), passwordEncoder.encode(dto.password()));
-
         userRepository.save(user);
     }
 
@@ -37,11 +36,10 @@ public class AuthService {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        System.out.println("ENTER authenticateAndCreateSession");
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password)
         );
-        System.out.println("AUTH OK");
+
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
@@ -49,11 +47,5 @@ public class AuthService {
         securityContextRepository.saveContext(context, request, response);
 
         HttpSession session = request.getSession(false);
-
-        if (session != null) {
-            System.out.println("SESSION ID = " + session.getId());
-        } else {
-            System.out.println("SESSION IS NULL");
-        }
     }
 }

@@ -4,7 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
-import org.cloudstorage.model.dto.AuthRequestDto;
+import org.cloudstorage.dto.AuthRequestDto;
+import org.cloudstorage.dto.UserResponseDto;
 import org.cloudstorage.service.AuthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -33,7 +34,7 @@ public class AuthController {
                 httpResponse
         );
 
-        return ResponseEntity.ok(new UserController.MeResponse(request.username()));
+        return ResponseEntity.ok(new UserResponseDto(request.username()));
     }
 
     @PostMapping("/sign-in")
@@ -50,7 +51,7 @@ public class AuthController {
                     httpResponse
             );
 
-            return ResponseEntity.ok(new UserController.MeResponse(request.username()));
+            return ResponseEntity.ok(new UserResponseDto(request.username()));
 
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(401)
@@ -59,7 +60,7 @@ public class AuthController {
     }
 
     @PostMapping("/sign-out")
-    public ResponseEntity<?> logout(HttpServletRequest request, Authentication authentication) {
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(401).build();
         }
@@ -70,6 +71,7 @@ public class AuthController {
         }
 
         SecurityContextHolder.clearContext();
+        response.setHeader("Set-Cookie", "SESSION=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax");
 
         return ResponseEntity.status(204).build();
     }

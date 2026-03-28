@@ -1,7 +1,7 @@
 package org.cloudstorage.config;
 
 import lombok.RequiredArgsConstructor;
-import org.cloudstorage.service.security.CustomUserDetailsService;
+import org.cloudstorage.service.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -10,7 +10,6 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -46,7 +45,12 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
-                            response.sendRedirect("/registration");
+                            String accept = request.getHeader("Accept");
+                            if (accept != null && accept.contains("application/json")) {
+                                response.setStatus(401);
+                            } else {
+                                response.sendRedirect("/registration");
+                            }
                         })
                 );
 

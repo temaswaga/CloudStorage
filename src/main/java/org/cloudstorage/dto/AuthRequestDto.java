@@ -1,4 +1,4 @@
-package org.cloudstorage.model.dto;
+package org.cloudstorage.dto;
 
 public record AuthRequestDto(
         String username,

@@ -1,145 +1,108 @@
 package org.cloudstorage.service;
 
+import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.cloudstorage.mapper.ResourceMapper;
+import org.cloudstorage.dto.ResourceDto;
 import org.cloudstorage.model.entity.FileNode;
 import org.cloudstorage.model.entity.User;
 import org.cloudstorage.repository.FileNodeRepository;
 import org.cloudstorage.repository.UserRepository;
 import org.hibernate.Hibernate;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class StorageService {
 
-    private final MinioClient minioClient;
-    private final FileNodeRepository fileNodeRepository;
-    private final UserRepository userRepository;
+    private final MinioService minioService;
+    private final FileNodeService fileNodeService;
 
-    @Transactional
     public FileNode uploadFile(MultipartFile file, String path, Long userId) {
-        try {
-            String objectKey = UUID.randomUUID() + "_" + file.getOriginalFilename();
+        String objectKey = minioService.upload(file);
+        log.info("Uploaded to MinIO: {}", objectKey);
 
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket("files")
-                            .object(objectKey)
-                            .stream(file.getInputStream(), file.getSize(), -1)
-                            .contentType(file.getContentType())
-                            .build()
-            );
-
-            User owner = userRepository.getReferenceById(userId);
-            FileNode parent = resolveParentPath(path, owner);
-
-            FileNode node = new FileNode();
-            node.setName(file.getOriginalFilename());
-            node.setDirectory(false);
-            node.setSizeBytes(file.getSize());
-            node.setS3Key(objectKey);
-            node.setOwner(owner);
-            node.setParent(parent);
-
-            FileNode saved = fileNodeRepository.save(node);
-            log.info("SAVED: {}", saved.getId());
-            return saved;
-
-        } catch (Exception e) {
-            throw new RuntimeException("Upload failed", e);
-        }
-    }
-
-    private FileNode resolveParentPath(String path, User owner) {
-        if (path == null || path.isBlank() || path.equals("/")) {
-            return null;
-        }
-
-        String[] segments = path.strip().replaceAll("^/+|/+$", "").split("/");
-
-        FileNode current = null;
-        for (String segment : segments) {
-            if (segment.isBlank()) continue;
-            FileNode finalCurrent = current;
-            current = fileNodeRepository
-                    .findByOwnerAndParentAndName(owner, current, segment)
-                    .orElseGet(() -> {
-                        FileNode dir = new FileNode();
-                        dir.setName(segment);
-                        dir.setDirectory(true);
-                        dir.setOwner(owner);
-                        dir.setParent(finalCurrent);
-                        return fileNodeRepository.save(dir);
-                    });
-        }
-        return current;
+        FileNode saved = fileNodeService.saveFileNode(
+                file.getOriginalFilename(),
+                file.getSize(),
+                objectKey,
+                path,
+                userId
+        );
+        log.info("SAVED: {}", saved.getId());
+        return saved;
     }
 
     @Transactional(readOnly = true)
-    public FileNode getResource(String path, Long userId) {
-        User owner = userRepository.getReferenceById(userId);
+    public ResponseEntity<Resource> downloadResource(String path, Long userId) throws IOException {
+        FileNode node = fileNodeService.getResource(path, userId);
 
-        // Убираем leading слэш, разбиваем на сегменты
-        // "folder1/folder2/file.txt" -> ["folder1", "folder2", "file.txt"]
-        // "folder1/folder2/"         -> ["folder1", "folder2"]  (папка)
-        boolean isDirectory = path.endsWith("/");
-        String stripped = path.replaceAll("^/+", "").replaceAll("/+$", "");
-
-        if (stripped.isBlank()) {
-            // Запросили корень "/"
-            throw new IllegalArgumentException("Root directory info is not supported");
+        if (node.isDirectory()) {
+            byte[] zipBytes = zipDirectory(node);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + node.getName() + ".zip\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(new ByteArrayResource(zipBytes));
+        } else {
+            InputStream stream = minioService.download(node.getS3Key());
+            byte[] bytes = stream.readAllBytes();
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + node.getName() + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(new ByteArrayResource(bytes));
         }
-
-        String[] segments = stripped.split("/");
-
-        FileNode current = null;
-        for (int i = 0; i < segments.length; i++) {
-            String segment = segments[i];
-            boolean isLast = i == segments.length - 1;
-
-            FileNode node = fileNodeRepository
-                    .findByOwnerAndParentAndName(owner, current, segment)
-                    .orElseThrow(() -> new NoSuchElementException("Resource not found: " + segment));
-
-            // Если промежуточный сегмент оказался файлом — путь некорректный
-            if (!isLast && !node.isDirectory()) {
-                throw new IllegalArgumentException("Not a directory: " + segment);
-            }
-
-            current = node;
-        }
-
-        // Проверяем что тип совпадает с тем что запросили
-        if (isDirectory) {
-            assert current != null;
-            if (!current.isDirectory()) {
-                throw new IllegalArgumentException("Resource is a file, not a directory");
-            }
-        }
-        if (!isDirectory) {
-            assert current != null;
-            if (current.isDirectory()) {
-                throw new IllegalArgumentException("Resource is a directory, not a file");
-            }
-        }
-
-        initializeParentChain(current.getParent());
-        return current;
     }
 
-    private void initializeParentChain(FileNode node) {
-        while (node != null) {
-            Hibernate.initialize(node);
-            node = node.getParent();
+    private byte[] zipDirectory(FileNode dir) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+            zipNode(zos, dir, "");
+        }
+        return baos.toByteArray();
+    }
+
+    private void zipNode(ZipOutputStream zos, FileNode node, String prefix) {
+        if (node.isDirectory()) {
+            List<FileNode> children = fileNodeService.listDirectory(
+                    prefix + node.getName() + "/",
+                    node.getOwner().getId()
+            );
+            for (FileNode child : children) {
+                zipNode(zos, child, prefix + node.getName() + "/");
+            }
+        } else {
+            try {
+                InputStream stream = minioService.download(node.getS3Key());
+                zos.putNextEntry(new ZipEntry(prefix + node.getName()));
+                stream.transferTo(zos);
+                zos.closeEntry();
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to zip file: " + node.getName(), e);
+            }
         }
     }
 }

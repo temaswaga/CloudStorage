@@ -1,4 +1,4 @@
-package org.cloudstorage.service.security;
+package org.cloudstorage.service;
 
 import lombok.RequiredArgsConstructor;
 import org.cloudstorage.repository.UserRepository;
