@@ -2,35 +2,43 @@ package org.cloudstorage.model.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
 
 import java.util.UUID;
 
 @Getter
 @Setter
+@NoArgsConstructor
 @Entity
-@Table(name = "file_nodes")
+@Table(
+        name = "file_nodes",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_file_nodes_owner_parent_name",
+                        columnNames = {"owner_id", "parent_id", "name"})
+        },
+        indexes = {
+                @Index(name = "idx_file_nodes_owner_parent", columnList = "owner_id,parent_id")
+        }
+)
 public class FileNode {
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, length = 255)
     private String name;
 
     @Column(name = "is_directory", nullable = false)
-    private Boolean isDirectory = false;
+    private boolean directory = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
-    @JdbcTypeCode(java.sql.Types.BINARY)
     private FileNode parent;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
-    @JdbcTypeCode(java.sql.Types.BINARY)
     private User owner;
 
     @Column(name = "size_bytes")

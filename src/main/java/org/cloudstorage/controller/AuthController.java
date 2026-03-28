@@ -1,27 +1,76 @@
 package org.cloudstorage.controller;
 
-import org.cloudstorage.model.dto.RegistrationRequestDto;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
+import org.cloudstorage.model.dto.AuthRequestDto;
+import org.cloudstorage.service.AuthService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
 
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+    private final AuthService authService;
 
     @PostMapping("/sign-up")
-    public ResponseEntity<?> register(@RequestBody RegistrationRequestDto request){
-        //logic
-        System.out.println(request.password() + "  " + request.username());
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> register(
+            @RequestBody AuthRequestDto request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
+    ) {
+        authService.register(request);
+
+        authService.authenticateAndCreateSession(
+                request.username(),
+                request.password(),
+                httpRequest,
+                httpResponse
+        );
+
+        return ResponseEntity.ok(new UserController.MeResponse(request.username()));
     }
 
     @PostMapping("/sign-in")
-    public ResponseEntity<?> login(@RequestBody RegistrationRequestDto request){
-        //logic
-        System.out.println(request.password() + "  " + request.username());
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> login(
+            @RequestBody AuthRequestDto request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
+    ) {
+        try {
+            authService.authenticateAndCreateSession(
+                    request.username(),
+                    request.password(),
+                    httpRequest,
+                    httpResponse
+            );
+
+            return ResponseEntity.ok(new UserController.MeResponse(request.username()));
+
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(401)
+                    .body(new Error("Неверные данные (такого пользователя нет, или пароль неправильный)"));
+        }
+    }
+
+    @PostMapping("/sign-out")
+    public ResponseEntity<?> logout(HttpServletRequest request, Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+
+        SecurityContextHolder.clearContext();
+
+        return ResponseEntity.status(204).build();
     }
 }

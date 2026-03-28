@@ -1,6 +1,6 @@
 package org.cloudstorage.model.dto;
 
-public record LoginRequestDto (
+public record AuthRequestDto(
         String username,
         String password
 ) {}
