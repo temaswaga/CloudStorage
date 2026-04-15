@@ -5,7 +5,6 @@ import org.cloudstorage.dto.ResourceDto;
 import org.cloudstorage.mapper.ResourceMapper;
 import org.cloudstorage.model.security.UserDetails;
 import org.cloudstorage.service.FileNodeService;
-import org.cloudstorage.service.StorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;

@@ -1,17 +1,8 @@
 package org.cloudstorage.service;
 
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.cloudstorage.mapper.ResourceMapper;
-import org.cloudstorage.dto.ResourceDto;
 import org.cloudstorage.model.entity.FileNode;
-import org.cloudstorage.model.entity.User;
-import org.cloudstorage.repository.FileNodeRepository;
-import org.cloudstorage.repository.UserRepository;
-import org.hibernate.Hibernate;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -25,8 +16,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 

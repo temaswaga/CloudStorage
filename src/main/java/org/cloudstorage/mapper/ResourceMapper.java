@@ -28,4 +28,3 @@ public class ResourceMapper {
         return path.toString();
     }
 }
-

@@ -3,8 +3,8 @@ package org.cloudstorage.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.cloudstorage.mapper.ResourceMapper;
 import org.cloudstorage.dto.ResourceDto;
+import org.cloudstorage.mapper.ResourceMapper;
 import org.cloudstorage.model.entity.FileNode;
 import org.cloudstorage.model.security.UserDetails;
 import org.cloudstorage.service.FileNodeService;
@@ -92,5 +92,16 @@ public class ResourceController {
 
         fileNodeService.deleteResource(path, userDetails.getId());
         return ResponseEntity.status(204).build();
+    }
+
+    @GetMapping("/resource/move")
+    public ResponseEntity<ResourceDto> move(
+            @RequestParam("from") String from,
+            @RequestParam("to") String to,
+            Authentication authentication
+    ) {
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        ResourceDto result = fileNodeService.moveResource(from, to, userDetails.getId());
+        return ResponseEntity.ok(result);
     }
 }

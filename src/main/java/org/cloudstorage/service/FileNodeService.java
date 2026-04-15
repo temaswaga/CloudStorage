@@ -1,10 +1,13 @@
 package org.cloudstorage.service;
 
 import lombok.RequiredArgsConstructor;
+import org.cloudstorage.dto.ResourceDto;
+import org.cloudstorage.mapper.ResourceMapper;
 import org.cloudstorage.model.entity.FileNode;
 import org.cloudstorage.model.entity.User;
 import org.cloudstorage.repository.FileNodeRepository;
 import org.cloudstorage.repository.UserRepository;
+import org.cloudstorage.util.PathUtils;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,34 +52,41 @@ public class FileNodeService {
     }
 
     @Transactional
+    public ResourceDto moveResource(String from, String to, Long userId) {
+        User owner = userRepository.getReferenceById(userId);
+
+        FileNode node = resolveExistingPath(from, owner);
+
+        String[] parts = PathUtils.parsePathParts(to);
+        String newParentPath = parts[0];
+        String newName = parts[1];
+
+        FileNode newParent = findParentNode(newParentPath, owner);
+
+        if (fileNodeRepository.findByOwnerAndParentAndName(owner, newParent, newName).isPresent()) {
+            throw new IllegalStateException("Resource already exists: " + to);
+        }
+
+        node.setName(newName);
+        node.setParent(newParent);
+
+        FileNode saved = fileNodeRepository.save(node);
+        initializeParentChain(saved.getParent());
+        return ResourceMapper.toDto(saved);
+    }
+
+    @Transactional
     public FileNode createDirectory(String path, Long userId) {
         if (path == null || path.isBlank() || !path.endsWith("/")) {
             throw new IllegalArgumentException("Invalid path: " + path);
         }
 
         User owner = userRepository.getReferenceById(userId);
+        String[] parts = PathUtils.parsePathParts(path);
+        String parentPath = parts[0];
+        String dirName = parts[1];
 
-        String stripped = path.replaceAll("^/+|/+$", "");
-        int lastSlash = stripped.lastIndexOf("/");
-
-        String parentPath;
-        if (lastSlash >= 0) {
-            parentPath = stripped.substring(0, lastSlash);
-        } else {
-            parentPath = null;
-        }
-
-        String dirName;
-        if (lastSlash >= 0) {
-            dirName = stripped.substring(lastSlash + 1);
-        } else {
-            dirName = stripped;
-        }
-
-        FileNode parent = null;
-        if (parentPath != null && !parentPath.isBlank()) {
-            parent = resolveExistingPath(parentPath + "/", owner);
-        }
+        FileNode parent = findParentNode(parentPath, owner);
 
         if (fileNodeRepository.findByOwnerAndParentAndName(owner, parent, dirName).isPresent()) {
             throw new IllegalStateException("Directory already exists: " + path);
@@ -181,5 +191,12 @@ public class FileNodeService {
             Hibernate.initialize(node);
             node = node.getParent();
         }
+    }
+
+    private FileNode findParentNode(String parentPath, User owner) {
+        if (parentPath == null || parentPath.isBlank()) {
+            return null;
+        }
+        return resolveExistingPath(parentPath + "/", owner);
     }
 }
