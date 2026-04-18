@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.cloudstorage.dto.ResourceDto;
 import org.cloudstorage.mapper.ResourceMapper;
 import org.cloudstorage.model.entity.FileNode;
@@ -27,6 +28,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 import java.io.IOException;
 import java.util.List;
 
+@Slf4j
 @Tag(name = "Resource Management", description = "Операции с файлами: получение инфо, загрузка, скачивание, удаление и перемещение")
 @RequiredArgsConstructor
 @RestController
@@ -59,16 +61,17 @@ public class ResourceController {
     })
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<List<ResourceDto>> upload(
-            @Parameter(description = "Путь к папке загрузки", example = "uploads/") @RequestParam String path,
-            @Parameter(description = "Список файлов для загрузки") @RequestParam("files") List<MultipartFile> files,
+            @RequestParam String path,
+            @RequestParam("object") List<MultipartFile> files, // Поменял "file" на "object"
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         validatePath(path);
 
-        List<ResourceDto> uploadedResources = files.stream()
-                .map(file -> storageService.uploadFile(file, path, userDetails.getId()))
-                .map(ResourceMapper::toDto)
-                .toList();
+        List<ResourceDto> uploadedResources = new java.util.ArrayList<>();
+        for (MultipartFile file : files) {
+            FileNode node = storageService.uploadFile(file, path, userDetails.getId());
+            uploadedResources.add(ResourceMapper.toDto(node));
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(uploadedResources);
     }
@@ -127,8 +130,8 @@ public class ResourceController {
     }
 
     private void validatePath(String path) {
-        if (path == null || path.isEmpty()) {
-            throw new IllegalArgumentException("Path cannot be empty");
+        if (path == null) {
+            throw new IllegalArgumentException("Path cannot be null");
         }
     }
 }
