@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,7 +42,7 @@ public class StorageService {
     }
 
     @Transactional(readOnly = true)
-    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> downloadResource(final String path, final Long userId) throws IOException {
+    public ResponseEntity<StreamingResponseBody> downloadResource(final String path, final Long userId) throws IOException {
         final FileNode node = fileNodeService.getResource(path, userId);
 
         if (node.isDirectory()) {
@@ -51,8 +52,8 @@ public class StorageService {
         }
     }
 
-    private ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> downloadSingleFile(final FileNode node) {
-        org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody =
+    private ResponseEntity<StreamingResponseBody> downloadSingleFile(final FileNode node) {
+        StreamingResponseBody responseBody =
                 outputStream -> {
                     try (InputStream minioStream = minioService.download(node.getS3Key())) {
                         minioStream.transferTo(outputStream);
@@ -65,8 +66,8 @@ public class StorageService {
                 .body(responseBody);
     }
 
-    private ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> downloadDirectoryAsZip(final FileNode dir) {
-        org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody =
+    private ResponseEntity<StreamingResponseBody> downloadDirectoryAsZip(final FileNode dir) {
+        StreamingResponseBody responseBody =
                 outputStream -> {
                     try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
                         zipNode(zos, dir, "");
