@@ -1,10 +1,7 @@
 package org.cloudstorage.service;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.cloudstorage.model.entity.FileNode;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -12,16 +9,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-
-
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class StorageService {
@@ -29,68 +22,81 @@ public class StorageService {
     private final MinioService minioService;
     private final FileNodeService fileNodeService;
 
+    @Transactional
     public FileNode uploadFile(MultipartFile file, String path, Long userId) {
         String objectKey = minioService.upload(file);
-        log.info("Uploaded to MinIO: {}", objectKey);
 
-        FileNode saved = fileNodeService.saveFileNode(
-                file.getOriginalFilename(),
-                file.getSize(),
-                objectKey,
-                path,
-                userId
-        );
-        log.info("SAVED: {}", saved.getId());
-        return saved;
+        try {
+            return fileNodeService.saveFileNode(
+                    file.getOriginalFilename(),
+                    file.getSize(),
+                    objectKey,
+                    path,
+                    userId
+            );
+        } catch (Exception e) {
+            // TODO minioService.delete(objectKey);
+            throw e;
+        }
     }
 
     @Transactional(readOnly = true)
-    public ResponseEntity<Resource> downloadResource(String path, Long userId) throws IOException {
-        FileNode node = fileNodeService.getResource(path, userId);
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> downloadResource(final String path, final Long userId) throws IOException {
+        final FileNode node = fileNodeService.getResource(path, userId);
 
         if (node.isDirectory()) {
-            byte[] zipBytes = zipDirectory(node);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + node.getName() + ".zip\"")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(new ByteArrayResource(zipBytes));
+            return downloadDirectoryAsZip(node);
         } else {
-            InputStream stream = minioService.download(node.getS3Key());
-            byte[] bytes = stream.readAllBytes();
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + node.getName() + "\"")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(new ByteArrayResource(bytes));
+            return downloadSingleFile(node);
         }
     }
 
-    private byte[] zipDirectory(FileNode dir) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-            zipNode(zos, dir, "");
-        }
-        return baos.toByteArray();
+    private ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> downloadSingleFile(final FileNode node) {
+        org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody =
+                outputStream -> {
+                    try (InputStream minioStream = minioService.download(node.getS3Key())) {
+                        minioStream.transferTo(outputStream);
+                    }
+                };
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + node.getName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(responseBody);
     }
 
-    private void zipNode(ZipOutputStream zos, FileNode node, String prefix) {
+    private ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> downloadDirectoryAsZip(final FileNode dir) {
+        org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody =
+                outputStream -> {
+                    try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
+                        zipNode(zos, dir, "");
+                    }
+                };
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + dir.getName() + ".zip\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(responseBody);
+    }
+
+    private void zipNode(ZipOutputStream zos, FileNode node, String prefix) throws IOException {
+        String currentPathInZip = prefix + node.getName();
+
         if (node.isDirectory()) {
-            List<FileNode> children = fileNodeService.listDirectory(
-                    prefix + node.getName() + "/",
-                    node.getOwner().getId()
-            );
+            String pathWithSlash = currentPathInZip + "/";
+
+            List<FileNode> children = fileNodeService.listDirectory(pathWithSlash, node.getOwner().getId());
+
             for (FileNode child : children) {
-                zipNode(zos, child, prefix + node.getName() + "/");
+                zipNode(zos, child, pathWithSlash);
             }
         } else {
-            try {
-                InputStream stream = minioService.download(node.getS3Key());
-                zos.putNextEntry(new ZipEntry(prefix + node.getName()));
-                stream.transferTo(zos);
+            try (InputStream is = minioService.download(node.getS3Key())) {
+                zos.putNextEntry(new ZipEntry(currentPathInZip));
+                is.transferTo(zos);
                 zos.closeEntry();
             } catch (Exception e) {
-                throw new RuntimeException("Failed to zip file: " + node.getName(), e);
+                throw new IOException("Failed to zip file: " + node.getName());
             }
         }
     }

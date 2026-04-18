@@ -1,9 +1,7 @@
 package org.cloudstorage.model.security;
 
-import lombok.Generated;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.cloudstorage.model.entity.User;
 import org.springframework.security.core.GrantedAuthority;
 
 import java.io.Serial;

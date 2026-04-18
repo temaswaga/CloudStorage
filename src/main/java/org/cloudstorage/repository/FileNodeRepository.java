@@ -12,4 +12,5 @@ import java.util.Optional;
 public interface FileNodeRepository extends JpaRepository<FileNode, Long> {
     Optional<FileNode> findByOwnerAndParentAndName(User owner, FileNode parent, String name);
     List<FileNode> findByOwnerAndParent(User owner, FileNode parent);
+    List<FileNode> findAllByOwnerIdAndNameContainingIgnoreCase(Long ownerId, String name);
 }

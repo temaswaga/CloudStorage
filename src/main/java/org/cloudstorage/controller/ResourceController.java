@@ -1,107 +1,103 @@
 package org.cloudstorage.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.cloudstorage.dto.ResourceDto;
 import org.cloudstorage.mapper.ResourceMapper;
 import org.cloudstorage.model.entity.FileNode;
 import org.cloudstorage.model.security.UserDetails;
 import org.cloudstorage.service.FileNodeService;
 import org.cloudstorage.service.StorageService;
-import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.multipart.MultipartHttpServletRequest;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.nio.file.InvalidPathException;
 import java.util.List;
-import java.util.Map;
 
-@Slf4j
 @RequiredArgsConstructor
 @RestController
+@RequestMapping("/resource")
 public class ResourceController {
 
     private final StorageService storageService;
     private final FileNodeService fileNodeService;
 
-    @GetMapping("/resource")
-    public ResponseEntity<?> getResource(
-            @RequestParam("path") String path,
-            Authentication authentication
+    @GetMapping
+    public ResponseEntity<ResourceDto> getResource(
+            @RequestParam String path,
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-
+        validatePath(path);
         FileNode node = fileNodeService.getResource(path, userDetails.getId());
         return ResponseEntity.ok(ResourceMapper.toDto(node));
     }
 
-    @PostMapping(path = "/resource", consumes = "multipart/form-data")
-    public ResponseEntity<?> upload(
-            @RequestParam("path") String path,
-            HttpServletRequest request,
-            Authentication authentication
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<List<ResourceDto>> upload(
+            @RequestParam String path,
+            @RequestParam("files") List<MultipartFile> files,
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
+        validatePath(path);
 
-        if (!authentication.isAuthenticated()) {
-            return ResponseEntity.status(401).build();
-        }
+        List<ResourceDto> uploadedResources = files.stream()
+                .map(file -> storageService.uploadFile(file, path, userDetails.getId()))
+                .map(ResourceMapper::toDto)
+                .toList();
 
-        if (!(request instanceof MultipartHttpServletRequest multipartRequest)) {
-            return ResponseEntity.status(400).build();
-        }
-
-        //file already exists
-
-        List<ResourceDto> result = new ArrayList<>();
-
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-
-        for (Map.Entry<String, List<MultipartFile>> entry : multipartRequest.getMultiFileMap().entrySet()) {
-            for (MultipartFile file : entry.getValue()) {
-                log.info("File: {}", file.getOriginalFilename());
-                FileNode node = storageService.uploadFile(
-                        file,
-                        path,
-                        userDetails.getId()
-                );
-                result.add(ResourceMapper.toDto(node));
-            }
-        }
-        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        return ResponseEntity.status(HttpStatus.CREATED).body(uploadedResources);
     }
 
-    @GetMapping("/resource/download")
-    public ResponseEntity<Resource> download(
-            @RequestParam("path") String path,
-            Authentication authentication
+    @GetMapping("/download")
+    public ResponseEntity<StreamingResponseBody> download(
+            @RequestParam String path,
+            @AuthenticationPrincipal UserDetails userDetails
     ) throws IOException {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        validatePath(path);
         return storageService.downloadResource(path, userDetails.getId());
     }
 
-    @DeleteMapping(path = "/resource")
-    public ResponseEntity<?> deleteFile(@RequestParam("path") String path,
-                                        Authentication authentication) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-
+    @DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteFile(
+            @RequestParam String path,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        validatePath(path);
         fileNodeService.deleteResource(path, userDetails.getId());
-        return ResponseEntity.status(204).build();
     }
 
-    @GetMapping("/resource/move")
+    @GetMapping("/move")
     public ResponseEntity<ResourceDto> move(
             @RequestParam("from") String from,
             @RequestParam("to") String to,
-            Authentication authentication
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
         ResourceDto result = fileNodeService.moveResource(from, to, userDetails.getId());
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<ResourceDto>> search(
+            @RequestParam("query") String query,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        if (query == null || query.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<ResourceDto> results = fileNodeService.search(query, userDetails.getId());
+        return ResponseEntity.ok(results);
+    }
+
+    private void validatePath(String path) {
+        if (path == null || path.isEmpty()) {
+            assert path != null;
+            throw new InvalidPathException(path, "Path cannot be empty");
+        }
     }
 }

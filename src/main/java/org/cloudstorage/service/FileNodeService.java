@@ -31,6 +31,14 @@ public class FileNodeService {
         return node;
     }
 
+    @Transactional(readOnly = true)
+    public List<ResourceDto> search(String query, Long userId) {
+        List<FileNode> nodes = fileNodeRepository.findAllByOwnerIdAndNameContainingIgnoreCase(userId, query);
+        return nodes.stream()
+                .map(ResourceMapper::toDto)
+                .toList();
+    }
+
     @Transactional
     public void deleteResource(String path, Long userId) {
         User owner = userRepository.getReferenceById(userId);
